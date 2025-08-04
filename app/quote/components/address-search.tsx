@@ -7,10 +7,15 @@ import { motion, AnimatePresence } from 'framer-motion'
 interface Address {
   address_line_1: string
   address_line_2?: string
+  street_name?: string
+  street_number?: string
+  building_name?: string
+  sub_building?: string
   town_or_city: string
   county?: string
   postcode: string
   formatted_address: string
+  country?: string
 }
 
 interface AddressSearchProps {
@@ -25,79 +30,107 @@ export default function AddressSearch({ onAddressSelect, className = '' }: Addre
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [showDropdown, setShowDropdown] = useState(false)
+  const [highlightedIndex, setHighlightedIndex] = useState(-1)
+  const [searchTimeout, setSearchTimeout] = useState<NodeJS.Timeout | null>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
 
-  // Address search function - replace mock with actual Google Places API
-  const searchAddresses = async (postcode: string) => {
+  // Search addresses using Google Places API
+  const searchAddresses = async (postcode: string, isLiveSearch = false) => {
+    if (!postcode.trim() || postcode.trim().length < 3) {
+      setAddresses([])
+      setShowDropdown(false)
+      setHighlightedIndex(-1)
+      return
+    }
+
     setLoading(true)
     setError('')
     
     try {
-      // TODO: Replace with actual Google Places API call
-      // 
-      // For production implementation:
-      // 1. Get Google Places API key from environment variables
-      // 2. Use Google Places API (New) Text Search endpoint
-      // 3. Search for addresses by postcode in UK
-      // 
-      // Example implementation:
-      // const response = await fetch(`/api/places?postcode=${encodeURIComponent(postcode)}`)
-      // const data = await response.json()
-      // 
-      // API endpoint should:
-      // - Use Google Places API Text Search
-      // - Filter results by country:GB and postal_code
-      // - Return formatted addresses in the Address interface format
+      const response = await fetch(`/api/places?postcode=${encodeURIComponent(postcode)}`)
       
-      // Simulate API delay for demo
-      await new Promise(resolve => setTimeout(resolve, 500))
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
       
-      // Mock data - replace with actual API response
-      const mockAddresses: Address[] = [
-        {
-          address_line_1: '123 High Street',
-          town_or_city: 'London',
-          county: 'Greater London',
-          postcode: postcode.toUpperCase(),
-          formatted_address: `123 High Street, London, ${postcode.toUpperCase()}`
-        },
-        {
-          address_line_1: '456 Church Lane',
-          address_line_2: 'Flat 2',
-          town_or_city: 'London',
-          county: 'Greater London', 
-          postcode: postcode.toUpperCase(),
-          formatted_address: `456 Church Lane, Flat 2, London, ${postcode.toUpperCase()}`
-        },
-        {
-          address_line_1: '789 Market Square',
-          town_or_city: 'London',
-          county: 'Greater London',
-          postcode: postcode.toUpperCase(),
-          formatted_address: `789 Market Square, London, ${postcode.toUpperCase()}`
+      const data = await response.json()
+      
+      if (data.error) {
+        throw new Error(data.error)
+      }
+      
+      if (!data.addresses || data.addresses.length === 0) {
+        if (!isLiveSearch) {
+          setError('No addresses found for this postcode. Please check and try again.')
         }
-      ]
+        setAddresses([])
+        setShowDropdown(false)
+        setHighlightedIndex(-1)
+        return
+      }
       
-      setAddresses(mockAddresses)
+      setAddresses(data.addresses)
       setShowDropdown(true)
+      setHighlightedIndex(-1)
     } catch (err) {
-      setError('Failed to search addresses. Please try again.')
+      console.error('Address search error:', err)
+      if (!isLiveSearch) {
+        setError('Failed to search addresses. Please try again.')
+      }
+      setAddresses([])
+      setShowDropdown(false)
+      setHighlightedIndex(-1)
     } finally {
       setLoading(false)
-    }
-  }
-
-  const handlePostcodeSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (postcode.trim().length >= 5) {
-      searchAddresses(postcode.trim())
     }
   }
 
   const handleAddressSelect = (address: Address) => {
     setSelectedAddress(address)
     setShowDropdown(false)
+    setHighlightedIndex(-1)
+    setPostcode(address.postcode)
     onAddressSelect(address)
+  }
+
+  // Handle keyboard navigation
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (!showDropdown || addresses.length === 0) {
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        if (postcode.trim().length >= 3) {
+          searchAddresses(postcode.trim())
+        }
+      }
+      return
+    }
+
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault()
+        setHighlightedIndex(prev => 
+          prev < addresses.length - 1 ? prev + 1 : 0
+        )
+        break
+      case 'ArrowUp':
+        e.preventDefault()
+        setHighlightedIndex(prev => 
+          prev > 0 ? prev - 1 : addresses.length - 1
+        )
+        break
+      case 'Enter':
+        e.preventDefault()
+        if (highlightedIndex >= 0 && highlightedIndex < addresses.length) {
+          handleAddressSelect(addresses[highlightedIndex])
+        }
+        break
+      case 'Escape':
+        setShowDropdown(false)
+        setHighlightedIndex(-1)
+        inputRef.current?.blur()
+        break
+    }
   }
 
   const formatPostcode = (value: string) => {
@@ -111,53 +144,74 @@ export default function AddressSearch({ onAddressSelect, className = '' }: Addre
     const formatted = formatPostcode(e.target.value)
     setPostcode(formatted)
     setError('')
-    if (addresses.length > 0) {
-      setAddresses([])
-      setShowDropdown(false)
+    setSelectedAddress(null)
+    
+    // Clear existing timeout
+    if (searchTimeout) {
+      clearTimeout(searchTimeout)
     }
+    
+    // Set new timeout for live search
+    const newTimeout = setTimeout(() => {
+      if (formatted.trim().length >= 3) {
+        searchAddresses(formatted.trim(), true)
+      } else {
+        setAddresses([])
+        setShowDropdown(false)
+        setHighlightedIndex(-1)
+      }
+    }, 300) // 300ms delay for live search
+    
+    setSearchTimeout(newTimeout)
   }
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setShowDropdown(false)
+        setHighlightedIndex(-1)
       }
     }
 
     document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [])
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+      // Cleanup timeout on unmount
+      if (searchTimeout) {
+        clearTimeout(searchTimeout)
+      }
+    }
+  }, [searchTimeout])
 
   return (
     <div className={`space-y-4 ${className}`}>
       {/* Postcode Search */}
-      <form onSubmit={handlePostcodeSubmit} className="space-y-4">
+      <div className="space-y-4">
         <div className="relative">
           <input
+            ref={inputRef}
             type="text"
             value={postcode}
             onChange={handlePostcodeChange}
-            placeholder="Enter your postcode (e.g. SW1A 1AA)"
+            onKeyDown={handleKeyDown}
+            placeholder="Start typing your postcode (e.g. SW1A 1AA)"
             className="w-full p-4 pr-12 text-lg border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             maxLength={8}
+            autoComplete="postal-code"
           />
-          <button
-            type="submit"
-            disabled={loading || postcode.length < 5}
-            className="absolute right-2 top-1/2 transform -translate-y-1/2 p-2 bg-black text-white rounded-md hover:bg-gray-800 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
-          >
+          <div className="absolute right-2 top-1/2 transform -translate-y-1/2 p-2">
             {loading ? (
-              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              <div className="w-5 h-5 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
             ) : (
-              <Search size={20} />
+              <Search size={20} className="text-gray-400" />
             )}
-          </button>
+          </div>
         </div>
         
         {error && (
           <p className="text-red-600 text-sm">{error}</p>
         )}
-      </form>
+      </div>
 
       {/* Address Dropdown */}
       <div className="relative" ref={dropdownRef}>
@@ -172,26 +226,72 @@ export default function AddressSearch({ onAddressSelect, className = '' }: Addre
             >
               <div className="p-2">
                 <p className="text-sm text-gray-600 px-3 py-2 border-b">
-                  Select your address:
+                  Select your address (use ↑↓ arrow keys and Enter):
                 </p>
-                {addresses.map((address, index) => (
-                  <button
-                    key={index}
-                    onClick={() => handleAddressSelect(address)}
-                    className="w-full text-left p-3 hover:bg-gray-50 rounded-md flex items-start space-x-2 transition-colors"
-                  >
-                    <MapPin size={16} className="text-gray-400 mt-1 flex-shrink-0" />
-                    <div>
-                      <p className="font-medium text-gray-900">{address.address_line_1}</p>
-                      {address.address_line_2 && (
-                        <p className="text-sm text-gray-600">{address.address_line_2}</p>
-                      )}
-                      <p className="text-sm text-gray-600">
-                        {address.town_or_city}, {address.postcode}
-                      </p>
-                    </div>
-                  </button>
-                ))}
+                <div className="max-h-60 overflow-y-auto">
+                  {addresses.map((address, index) => (
+                    <button
+                      key={index}
+                      onClick={() => handleAddressSelect(address)}
+                      className={`w-full text-left p-3 rounded-md flex items-start space-x-3 transition-colors ${
+                        index === highlightedIndex 
+                          ? 'bg-blue-50 border-l-4 border-blue-500' 
+                          : 'hover:bg-gray-50'
+                      }`}
+                    >
+                      <MapPin size={16} className={`mt-1 flex-shrink-0 ${
+                        index === highlightedIndex ? 'text-blue-500' : 'text-gray-400'
+                      }`} />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center space-x-2 mb-1">
+                          <p className="font-medium text-gray-900 truncate">{address.address_line_1}</p>
+                          {address.street_number && (
+                            <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">
+                              #{address.street_number}
+                            </span>
+                          )}
+                        </div>
+                        
+                        {address.address_line_2 && (
+                          <p className="text-sm text-gray-600 mb-1">{address.address_line_2}</p>
+                        )}
+                        
+                        <div className="flex flex-wrap items-center gap-2 text-sm text-gray-600">
+                          <span>{address.town_or_city}</span>
+                          {address.county && (
+                            <>
+                              <span>•</span>
+                              <span>{address.county}</span>
+                            </>
+                          )}
+                          <span>•</span>
+                          <span className="font-medium">{address.postcode}</span>
+                        </div>
+                        
+                        {(address.building_name || address.sub_building) && (
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {address.building_name && (
+                              <span className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded">
+                                {address.building_name}
+                              </span>
+                            )}
+                            {address.sub_building && (
+                              <span className="text-xs bg-green-50 text-green-700 px-2 py-1 rounded">
+                                Unit {address.sub_building}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+                
+                {addresses.length > 5 && (
+                  <p className="text-xs text-gray-500 px-3 py-2 border-t bg-gray-50">
+                    Showing {addresses.length} addresses • Use arrow keys to navigate
+                  </p>
+                )}
               </div>
             </motion.div>
           )}
@@ -206,18 +306,63 @@ export default function AddressSearch({ onAddressSelect, className = '' }: Addre
           transition={{ duration: 0.3 }}
           className="bg-green-50 border border-green-200 rounded-lg p-4"
         >
-          <div className="flex items-center space-x-2 mb-2">
-            <MapPin size={16} className="text-green-600" />
-            <span className="text-sm font-medium text-green-800">Selected Address:</span>
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center space-x-2">
+              <MapPin size={16} className="text-green-600" />
+              <span className="text-sm font-medium text-green-800">Selected Address:</span>
+            </div>
+            <button
+              onClick={() => {
+                setSelectedAddress(null)
+                setPostcode('')
+                inputRef.current?.focus()
+              }}
+              className="text-sm text-green-700 hover:text-green-800 underline"
+            >
+              Change
+            </button>
           </div>
-          <div className="text-gray-900">
-            <p className="font-medium">{selectedAddress.address_line_1}</p>
-            {selectedAddress.address_line_2 && (
-              <p>{selectedAddress.address_line_2}</p>
-            )}
-            <p>{selectedAddress.town_or_city}, {selectedAddress.postcode}</p>
-            {selectedAddress.county && (
-              <p className="text-sm text-gray-600">{selectedAddress.county}</p>
+          
+          <div className="space-y-2">
+            <div className="text-gray-900">
+              <p className="font-semibold text-lg">{selectedAddress.address_line_1}</p>
+              {selectedAddress.address_line_2 && (
+                <p className="text-gray-700">{selectedAddress.address_line_2}</p>
+              )}
+            </div>
+            
+            <div className="text-gray-700">
+              <p>{selectedAddress.town_or_city}</p>
+              {selectedAddress.county && (
+                <p className="text-sm">{selectedAddress.county}</p>
+              )}
+              <p className="font-medium">{selectedAddress.postcode}</p>
+              {selectedAddress.country && (
+                <p className="text-sm text-gray-500">{selectedAddress.country}</p>
+              )}
+            </div>
+            
+            {(selectedAddress.building_name || selectedAddress.sub_building || selectedAddress.street_name) && (
+              <div className="pt-2 border-t border-green-200">
+                <p className="text-xs font-medium text-green-800 mb-1">Additional Details:</p>
+                <div className="flex flex-wrap gap-2">
+                  {selectedAddress.street_name && (
+                    <span className="text-xs bg-white text-gray-700 px-2 py-1 rounded border">
+                      Street: {selectedAddress.street_name}
+                    </span>
+                  )}
+                  {selectedAddress.building_name && (
+                    <span className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded border border-blue-200">
+                      Building: {selectedAddress.building_name}
+                    </span>
+                  )}
+                  {selectedAddress.sub_building && (
+                    <span className="text-xs bg-purple-50 text-purple-700 px-2 py-1 rounded border border-purple-200">
+                      Unit: {selectedAddress.sub_building}
+                    </span>
+                  )}
+                </div>
+              </div>
             )}
           </div>
         </motion.div>

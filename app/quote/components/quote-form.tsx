@@ -15,10 +15,15 @@ import AddressSearch from './address-search'
 interface Address {
   address_line_1: string
   address_line_2?: string
+  street_name?: string
+  street_number?: string
+  building_name?: string
+  sub_building?: string
   town_or_city: string
   county?: string
   postcode: string
   formatted_address: string
+  country?: string
 }
 
 export default function QuoteForm() {
