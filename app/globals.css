@@ -66,3 +66,30 @@
     @apply bg-background text-foreground;
   }
 }
+
+@layer components {
+  /* Custom highlight color classes - change these to update the theme */
+  .highlight-bg {
+    @apply bg-orange-600;
+  }
+  
+  .highlight-text {
+    @apply text-orange-600;
+  }
+  
+  .highlight-border {
+    @apply border-orange-600;
+  }
+  
+  .highlight-bg-transparent {
+    @apply bg-orange-50;
+  }
+  
+  .highlight-hover {
+    @apply hover:bg-orange-600;
+  }
+  
+  .highlight-hover-text {
+    @apply hover:text-orange-600;
+  }
+}
