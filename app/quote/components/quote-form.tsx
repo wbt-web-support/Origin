@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { questions } from '../lib/questions'
 import { HelpCircle, ChevronLeft, Info, Check, MessageCircle, Phone, PhoneCall } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -11,6 +11,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import AddressSearch from './address-search'
+import UserInfoForm from './user-info-form'
 
 interface Address {
   address_line_1: string
@@ -26,12 +27,29 @@ interface Address {
   country?: string
 }
 
+interface UserInfo {
+  firstName: string
+  lastName: string
+  email: string
+  phone: string
+}
+
 export default function QuoteForm() {
   const [currentStep, setCurrentStep] = useState(0)
   const [answers, setAnswers] = useState<Record<string, string>>({})
   const [selectedAnswer, setSelectedAnswer] = useState<string>('')
   const [selectedAddress, setSelectedAddress] = useState<Address | null>(null)
   const [showAddressSearch, setShowAddressSearch] = useState(false)
+  const [userInfo, setUserInfo] = useState<UserInfo | null>(null)
+  const [showUserInfo, setShowUserInfo] = useState(false)
+
+  // Restore selected answer when currentStep changes
+  useEffect(() => {
+    if (!showAddressSearch && !showUserInfo && currentStep < questions.length) {
+      const currentQuestionId = questions[currentStep].id
+      setSelectedAnswer(answers[currentQuestionId] || '')
+    }
+  }, [currentStep, answers, showAddressSearch, showUserInfo])
 
   const handleAnswer = (questionId: string, answer: string) => {
     setAnswers(prev => ({
@@ -42,7 +60,9 @@ export default function QuoteForm() {
     // Auto-advance to next step or show address search
     if (currentStep < questions.length - 1) {
       setCurrentStep(prev => prev + 1)
-      setSelectedAnswer('')
+      // Set the selected answer for the next question if it exists
+      const nextQuestionId = questions[currentStep + 1].id
+      setSelectedAnswer(answers[nextQuestionId] || '')
     } else {
       // All questions completed, show address search
       setShowAddressSearch(true)
@@ -50,17 +70,33 @@ export default function QuoteForm() {
     }
   }
 
-  const handleAddressSelect = (address: Address) => {
+  const handleAddressSelect = (address: Address | null) => {
     setSelectedAddress(address)
   }
 
+  const handleAddressContinue = () => {
+    setShowAddressSearch(false)
+    setShowUserInfo(true)
+  }
+
+  const handleUserInfoChange = (userInfo: UserInfo) => {
+    setUserInfo(userInfo)
+  }
+
   const handleBack = () => {
-    if (showAddressSearch) {
+    if (showUserInfo) {
+      setShowUserInfo(false)
+      setShowAddressSearch(true)
+    } else if (showAddressSearch) {
       setShowAddressSearch(false)
-      setSelectedAnswer('')
+      // Restore the answer for the last question when going back from address search
+      const lastQuestionId = questions[questions.length - 1].id
+      setSelectedAnswer(answers[lastQuestionId] || '')
     } else if (currentStep > 0) {
       setCurrentStep(prev => prev - 1)
-      setSelectedAnswer('')
+      // Restore the answer for the previous question
+      const prevQuestionId = questions[currentStep - 1].id
+      setSelectedAnswer(answers[prevQuestionId] || '')
     }
   }
 
@@ -70,7 +106,7 @@ export default function QuoteForm() {
   }
 
   const currentQuestion = questions[currentStep]
-  const progress = showAddressSearch ? 100 : ((currentStep + 1) / questions.length) * 100
+  const progress = showUserInfo ? 100 : showAddressSearch ? 85 : ((currentStep + 1) / questions.length) * 70
 
   return (
     <div className="min-h-screen flex flex-col max-w-7xl mx-auto">
@@ -152,7 +188,25 @@ export default function QuoteForm() {
       <main className="flex-1 flex flex-col justify-start sm:justify-center px-4 sm:px-6 py-6 sm:py-8">
         <div className="max-w-4xl mx-auto w-full space-y-6 sm:space-y-8">
           
-          {showAddressSearch ? (
+          {showUserInfo ? (
+            /* User Info Form */
+            <AnimatePresence mode="wait">
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                transition={{ duration: 0.3, ease: "easeOut" }}
+                className="space-y-6 text-center"
+              >
+                <h1 className="text-2xl sm:text-3xl lg:text-4xl font-medium text-black leading-tight">
+                  Tell us about yourself
+                </h1>
+                <p className="text-gray-600 text-base sm:text-lg lg:text-xl">
+                  We'll use this information to prepare your quote
+                </p>
+              </motion.div>
+            </AnimatePresence>
+          ) : showAddressSearch ? (
             /* Address Search */
             <AnimatePresence mode="wait">
               <motion.div
@@ -199,7 +253,23 @@ export default function QuoteForm() {
             </AnimatePresence>
           )}
 
-          {showAddressSearch ? (
+          {showUserInfo ? (
+            /* User Info Form Component */
+            <AnimatePresence mode="wait">
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                transition={{ duration: 0.3, ease: "easeOut" }}
+                className="max-w-lg mx-auto"
+              >
+                <UserInfoForm
+                  onUserInfoChange={handleUserInfoChange}
+                  initialUserInfo={userInfo}
+                />
+              </motion.div>
+            </AnimatePresence>
+          ) : showAddressSearch ? (
             /* Address Search Component */
             <AnimatePresence mode="wait">
               <motion.div
@@ -209,7 +279,12 @@ export default function QuoteForm() {
                 transition={{ duration: 0.3, ease: "easeOut" }}
                 className="max-w-md mx-auto"
               >
-                <AddressSearch onAddressSelect={handleAddressSelect} />
+                <AddressSearch 
+                  onAddressSelect={handleAddressSelect}
+                  onContinue={handleAddressContinue}
+                  initialAddress={selectedAddress}
+                  initialPostcode={selectedAddress?.postcode || ''}
+                />
               </motion.div>
             </AnimatePresence>
           ) : (
@@ -237,7 +312,7 @@ export default function QuoteForm() {
                           ? 'lg:p-4 lg:rounded-lg lg:flex lg:flex-col lg:items-center lg:justify-center lg:space-y-4 w-full p-4 sm:p-4 rounded-full text-left group'
                           : 'w-full p-4 sm:p-4 rounded-full text-left group'
                       } ${
-                        selectedAnswer === option.value
+                        selectedAnswer === option.value || answers[currentQuestion.id] === option.value
                           ? currentQuestion.options.some(opt => opt.image)
                             ? 'lg:bg-black lg:text-white highlight-bg text-white'
                             : 'highlight-bg text-white'
@@ -251,12 +326,11 @@ export default function QuoteForm() {
                           {/* Mobile: Image-only style (no checkbox) */}
                           <div className="lg:hidden flex items-center space-x-3 sm:space-x-4">
                             <div className="flex items-center space-x-3 sm:space-x-4 flex-1">
-                              <div className="flex items-center justify-center flex-shrink-0">
-                                <img 
-                                  src={option.image} 
-                                  alt={option.label}
-                                  className={`w-6 h-6 sm:w-8 sm:h-8 object-contain${selectedAnswer === option.value ? 'invert' : ''}`}
-                                />
+                              <div className="flex items-center justify-center flex-shrink-0">                              <img 
+                                src={option.image} 
+                                alt={option.label}
+                                className={`w-6 h-6 sm:w-8 sm:h-8 object-contain${(selectedAnswer === option.value || answers[currentQuestion.id] === option.value) ? ' invert' : ''}`}
+                              />
                               </div>
                               <span className="text-base sm:text-lg font-medium">{option.label}</span>
                             </div>
@@ -268,7 +342,7 @@ export default function QuoteForm() {
                               <img 
                                 src={option.image} 
                                 alt={option.label}
-                                className={` ${selectedAnswer === option.value ? 'invert' : ''}`}
+                                className={` ${(selectedAnswer === option.value || answers[currentQuestion.id] === option.value) ? 'invert' : ''}`}
                               />
                             </div>
                             <span className="text-base font-medium text-center w-full flex items-center justify-center mt-2">{option.label}</span>
@@ -278,16 +352,18 @@ export default function QuoteForm() {
                         // Original radio button style
                         <div className="flex items-center space-x-3 sm:space-x-4">
                           <div className={`w-6 h-6 sm:w-8 sm:h-8 rounded-full flex items-center justify-center  ${
-                            selectedAnswer === option.value
+                            (selectedAnswer === option.value || answers[currentQuestion.id] === option.value)
                               ? 'bg-white'
                               : 'bg-gray-200 group-hover:bg-white'
                           }`}>
-                            {selectedAnswer === option.value ? (
+                            {(selectedAnswer === option.value || answers[currentQuestion.id] === option.value) ? (
                               <Check size={10} className="sm:w-3 sm:h-3 highlight-text" />
                             ) : (
-                              <div className="w-6 h-6 sm:w-8 sm:h-8 bg-gray-300 rounded-full group-hover:hidden" />
+                              <>
+                                <div className="w-6 h-6 sm:w-8 sm:h-8 bg-gray-300 rounded-full group-hover:hidden" />
+                                <Check size={16} className="sm:w-5 sm:h-5 highlight-text hidden group-hover:block" strokeWidth={3} />
+                              </>
                             )}
-                            <Check size={16} className="sm:w-5 sm:h-5 highlight-text hidden group-hover:block" strokeWidth={3} />
                           </div>
                           <span className="text-base sm:text-lg font-medium">{option.label}</span>
                         </div>
@@ -331,7 +407,7 @@ export default function QuoteForm() {
       <footer className="border-t border-gray-100 px-4 sm:px-6 py-4">
         <div className="flex items-center justify-between">
           {/* Back Button */}
-          {(currentStep > 0 || showAddressSearch) && (
+          {(currentStep > 0 || showAddressSearch || showUserInfo) && (
             <button
               onClick={handleBack}
               className="w-8 h-8 sm:w-10 sm:h-10 bg-gray-300 rounded-full flex items-center justify-center"

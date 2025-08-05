@@ -19,14 +19,23 @@ interface Address {
 }
 
 interface AddressSearchProps {
-  onAddressSelect: (address: Address) => void
+  onAddressSelect: (address: Address | null) => void
+  onContinue?: () => void
   className?: string
+  initialAddress?: Address | null
+  initialPostcode?: string
 }
 
-export default function AddressSearch({ onAddressSelect, className = '' }: AddressSearchProps) {
-  const [postcode, setPostcode] = useState('')
+export default function AddressSearch({ 
+  onAddressSelect, 
+  onContinue,
+  className = '', 
+  initialAddress = null, 
+  initialPostcode = '' 
+}: AddressSearchProps) {
+  const [postcode, setPostcode] = useState(initialPostcode)
   const [addresses, setAddresses] = useState<Address[]>([])
-  const [selectedAddress, setSelectedAddress] = useState<Address | null>(null)
+  const [selectedAddress, setSelectedAddress] = useState<Address | null>(initialAddress)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [showDropdown, setShowDropdown] = useState(false)
@@ -34,6 +43,7 @@ export default function AddressSearch({ onAddressSelect, className = '' }: Addre
   const [searchTimeout, setSearchTimeout] = useState<NodeJS.Timeout | null>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const itemRefs = useRef<(HTMLButtonElement | null)[]>([])
 
   // Search addresses using Google Places API
   const searchAddresses = async (postcode: string, isLiveSearch = false) => {
@@ -73,6 +83,8 @@ export default function AddressSearch({ onAddressSelect, className = '' }: Addre
       setAddresses(data.addresses)
       setShowDropdown(true)
       setHighlightedIndex(-1)
+      // Reset refs array for new addresses
+      itemRefs.current = new Array(data.addresses.length).fill(null)
     } catch (err) {
       console.error('Address search error:', err)
       if (!isLiveSearch) {
@@ -94,6 +106,16 @@ export default function AddressSearch({ onAddressSelect, className = '' }: Addre
     onAddressSelect(address)
   }
 
+  // Scroll highlighted item into view
+  const scrollToHighlightedItem = (index: number) => {
+    if (itemRefs.current[index]) {
+      itemRefs.current[index]?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'nearest',
+      })
+    }
+  }
+
   // Handle keyboard navigation
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (!showDropdown || addresses.length === 0) {
@@ -109,15 +131,19 @@ export default function AddressSearch({ onAddressSelect, className = '' }: Addre
     switch (e.key) {
       case 'ArrowDown':
         e.preventDefault()
-        setHighlightedIndex(prev => 
-          prev < addresses.length - 1 ? prev + 1 : 0
-        )
+        setHighlightedIndex(prev => {
+          const newIndex = prev < addresses.length - 1 ? prev + 1 : 0
+          setTimeout(() => scrollToHighlightedItem(newIndex), 0)
+          return newIndex
+        })
         break
       case 'ArrowUp':
         e.preventDefault()
-        setHighlightedIndex(prev => 
-          prev > 0 ? prev - 1 : addresses.length - 1
-        )
+        setHighlightedIndex(prev => {
+          const newIndex = prev > 0 ? prev - 1 : addresses.length - 1
+          setTimeout(() => scrollToHighlightedItem(newIndex), 0)
+          return newIndex
+        })
         break
       case 'Enter':
         e.preventDefault()
@@ -183,6 +209,16 @@ export default function AddressSearch({ onAddressSelect, className = '' }: Addre
     }
   }, [searchTimeout])
 
+  // Update state when initial values change
+  useEffect(() => {
+    if (initialAddress !== selectedAddress) {
+      setSelectedAddress(initialAddress)
+    }
+    if (initialPostcode !== postcode && initialPostcode !== undefined && initialPostcode !== '') {
+      setPostcode(initialPostcode)
+    }
+  }, [initialAddress, initialPostcode, selectedAddress])
+
   return (
     <div className={`space-y-4 ${className}`}>
       {/* Postcode Search */}
@@ -195,7 +231,7 @@ export default function AddressSearch({ onAddressSelect, className = '' }: Addre
             onChange={handlePostcodeChange}
             onKeyDown={handleKeyDown}
             placeholder="Start typing your postcode (e.g. SW1A 1AA)"
-            className="w-full p-4 pr-12 text-lg border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="w-full p-4 px-6 pr-12 bg-white text-gray-900 text-lg border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             maxLength={8}
             autoComplete="postal-code"
           />
@@ -228,10 +264,11 @@ export default function AddressSearch({ onAddressSelect, className = '' }: Addre
                 <p className="text-sm text-gray-600 px-3 py-2 border-b">
                   Select your address (use ↑↓ arrow keys and Enter):
                 </p>
-                <div className="max-h-60 overflow-y-auto">
+                <div>
                   {addresses.map((address, index) => (
                     <button
                       key={index}
+                      ref={(el) => { itemRefs.current[index] = el }}
                       onClick={() => handleAddressSelect(address)}
                       className={`w-full text-left p-3 rounded-md flex items-start space-x-3 transition-colors ${
                         index === highlightedIndex 
@@ -315,6 +352,11 @@ export default function AddressSearch({ onAddressSelect, className = '' }: Addre
               onClick={() => {
                 setSelectedAddress(null)
                 setPostcode('')
+                setError('')
+                setShowDropdown(false)
+                setHighlightedIndex(-1)
+                // Notify parent that address was cleared
+                onAddressSelect(null)
                 inputRef.current?.focus()
               }}
               className="text-sm text-green-700 hover:text-green-800 underline"
@@ -365,6 +407,23 @@ export default function AddressSearch({ onAddressSelect, className = '' }: Addre
               </div>
             )}
           </div>
+        </motion.div>
+      )}
+
+      {/* Continue Button */}
+      {selectedAddress && onContinue && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.1 }}
+          className="flex justify-center"
+        >
+          <button
+            onClick={onContinue}
+            className="bg-black hover:bg-gray-800 text-white px-8 py-3 rounded-full font-medium text-base transition-colors focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-2"
+          >
+            Continue
+          </button>
         </motion.div>
       )}
 
