@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Phone, Check, RotateCcw, Shield } from 'lucide-react'
 import { motion } from 'framer-motion'
+import { getOtpConfig, getSupportMethods } from '@/lib/config'
 
 interface OtpVerificationProps {
   phoneNumber: string
@@ -17,7 +18,10 @@ export default function OtpVerification({
   onResendOtp,
   className = '' 
 }: OtpVerificationProps) {
-  const [otp, setOtp] = useState(['', '', '', '', '', ''])
+  const otpConfig = getOtpConfig()
+  const supportMethods = getSupportMethods()
+  
+  const [otp, setOtp] = useState(Array(otpConfig.codeLength).fill(''))
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
@@ -62,7 +66,7 @@ export default function OtpVerification({
       }
       
       setVerificationSid(data.sid)
-      setResendCooldown(60) // 60 seconds cooldown
+      setResendCooldown(otpConfig.resendCooldown)
     } catch (err) {
       console.error('Send OTP error:', err)
       setError(err instanceof Error ? err.message : 'Failed to send OTP')
@@ -111,7 +115,7 @@ export default function OtpVerification({
       console.error('Verify OTP error:', err)
       setError(err instanceof Error ? err.message : 'Verification failed')
       // Clear OTP on error
-      setOtp(['', '', '', '', '', ''])
+      setOtp(Array(otpConfig.codeLength).fill(''))
       inputRefs.current[0]?.focus()
     } finally {
       setLoading(false)
@@ -127,12 +131,12 @@ export default function OtpVerification({
     setError('')
     
     // Auto-focus next input
-    if (value && index < 5) {
+    if (value && index < otpConfig.codeLength - 1) {
       inputRefs.current[index + 1]?.focus()
     }
     
-    // Auto-verify when all digits are entered
-    if (newOtp.every(digit => digit !== '') && newOtp.join('').length === 6) {
+    // Auto-verify when all digits are entered (if enabled)
+    if (otpConfig.autoSubmit && newOtp.every(digit => digit !== '') && newOtp.join('').length === otpConfig.codeLength) {
       verifyOtp(newOtp.join(''))
     }
   }
@@ -145,9 +149,9 @@ export default function OtpVerification({
 
   const handlePaste = (e: React.ClipboardEvent) => {
     e.preventDefault()
-    const pasteData = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6)
+    const pasteData = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, otpConfig.codeLength)
     
-    if (pasteData.length === 6) {
+    if (pasteData.length === otpConfig.codeLength) {
       const newOtp = pasteData.split('')
       setOtp(newOtp)
       verifyOtp(pasteData)
@@ -158,7 +162,7 @@ export default function OtpVerification({
     setResendLoading(true)
     await sendOtp()
     setResendLoading(false)
-    setOtp(['', '', '', '', '', ''])
+    setOtp(Array(otpConfig.codeLength).fill(''))
     inputRefs.current[0]?.focus()
     if (onResendOtp) onResendOtp()
   }
@@ -188,7 +192,7 @@ export default function OtpVerification({
       <div className="text-center space-y-4">
        
         <p className="text-gray-600">
-          We've sent a 6-digit code to{' '}
+          We've sent a {otpConfig.codeLength}-digit code to{' '}
           <span className="font-medium text-gray-900">{formatPhoneNumber(phoneNumber)}</span>
         </p>
       </div>
@@ -276,10 +280,18 @@ export default function OtpVerification({
       </div>
 
       {/* Help text */}
-      <div className="text-center">
+      <div className="text-center space-y-2">
         <p className="text-xs text-gray-500">
           Didn't receive the code? Check your messages or try again.
         </p>
+        {supportMethods.length > 0 && (
+          <p className="text-xs text-gray-400">
+            Need help? Contact us at{' '}
+            <span className="text-blue-600 font-medium">
+              {supportMethods.find(m => m.type === 'phone')?.value || supportMethods[0]?.value}
+            </span>
+          </p>
+        )}
       </div>
     </div>
   )

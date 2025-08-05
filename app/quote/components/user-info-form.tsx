@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { Mail, Phone, Check, ChevronDown } from 'lucide-react'
+import { getCountryCodes, getDefaultCountryCode } from '@/lib/config'
 
 interface UserInfo {
   firstName: string
@@ -12,20 +13,8 @@ interface UserInfo {
   fullPhoneNumber: string // This will be the complete international format
 }
 
-// Popular country codes
-const COUNTRY_CODES = [
-  { code: '+44', country: 'UK' },
-  { code: '+91', country: 'IN' },
-  { code: '+1', country: 'US' },
-  { code: '+33', country: 'FR' },
-  { code: '+49', country: 'DE' },
-  { code: '+39', country: 'IT' },
-  { code: '+34', country: 'ES' },
-  { code: '+31', country: 'NL' },
-  { code: '+32', country: 'BE' },
-  { code: '+41', country: 'CH' },
-  { code: '+43', country: 'AT' },
-]
+// Get country codes from config
+const COUNTRY_CODES = getCountryCodes()
 
 // Detect country code from phone number
 const detectCountryCode = (phone: string): string => {

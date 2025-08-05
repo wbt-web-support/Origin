@@ -14,6 +14,7 @@ import AddressSearch from './address-search'
 import UserInfoForm from './user-info-form'
 import OtpVerification from './otp-verification'
 import { useRouter } from 'next/navigation'
+import { isOtpEnabled, getProgressStep, getSupportMethods } from '@/lib/config'
 
 interface Address {
   address_line_1: string
@@ -91,7 +92,14 @@ export default function QuoteForm() {
 
   const handleUserInfoContinue = () => {
     setShowUserInfo(false)
-    setShowOtpVerification(true)
+    
+    // Check if OTP verification is enabled
+    if (isOtpEnabled()) {
+      setShowOtpVerification(true)
+    } else {
+      // Skip OTP and go directly to product page
+      handleOtpVerificationComplete()
+    }
   }
 
   const handleOtpVerificationComplete = () => {
@@ -135,7 +143,10 @@ export default function QuoteForm() {
   }
 
   const currentQuestion = questions[currentStep]
-  const progress = showOtpVerification ? 100 : showUserInfo ? 95 : showAddressSearch ? 85 : ((currentStep + 1) / questions.length) * 70
+  const progress = showOtpVerification ? getProgressStep('otpVerification') 
+    : showUserInfo ? getProgressStep('userInfo') 
+    : showAddressSearch ? getProgressStep('address') 
+    : ((currentStep + 1) / questions.length) * getProgressStep('questions')
 
   return (
     <div className="min-h-screen flex flex-col max-w-7xl mx-auto">
@@ -186,7 +197,9 @@ export default function QuoteForm() {
                      
                       <div className="flex-1">
                         <p className="text-gray-600 text-sm">Speak to our team</p>
-                        <p className="text-black font-semibold text-lg underline">0330 113 1333</p>
+                        <p className="text-black font-semibold text-lg underline">
+                          {getSupportMethods().find(m => m.type === 'phone')?.value}
+                        </p>
                         <div className="flex items-center space-x-2 mt-1">
                           <div className="w-2 h-2 highlight-bg rounded-full"></div>
                           <span className="text-gray-500 text-xs">Lines are open</span>
