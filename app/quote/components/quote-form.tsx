@@ -12,6 +12,8 @@ import {
 } from "@/components/ui/dropdown-menu"
 import AddressSearch from './address-search'
 import UserInfoForm from './user-info-form'
+import OtpVerification from './otp-verification'
+import { useRouter } from 'next/navigation'
 
 interface Address {
   address_line_1: string
@@ -32,9 +34,12 @@ interface UserInfo {
   lastName: string
   email: string
   phone: string
+  countryCode: string
+  fullPhoneNumber: string
 }
 
 export default function QuoteForm() {
+  const router = useRouter()
   const [currentStep, setCurrentStep] = useState(0)
   const [answers, setAnswers] = useState<Record<string, string>>({})
   const [selectedAnswer, setSelectedAnswer] = useState<string>('')
@@ -42,14 +47,15 @@ export default function QuoteForm() {
   const [showAddressSearch, setShowAddressSearch] = useState(false)
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null)
   const [showUserInfo, setShowUserInfo] = useState(false)
+  const [showOtpVerification, setShowOtpVerification] = useState(false)
 
   // Restore selected answer when currentStep changes
   useEffect(() => {
-    if (!showAddressSearch && !showUserInfo && currentStep < questions.length) {
+    if (!showAddressSearch && !showUserInfo && !showOtpVerification && currentStep < questions.length) {
       const currentQuestionId = questions[currentStep].id
       setSelectedAnswer(answers[currentQuestionId] || '')
     }
-  }, [currentStep, answers, showAddressSearch, showUserInfo])
+  }, [currentStep, answers, showAddressSearch, showUserInfo, showOtpVerification])
 
   const handleAnswer = (questionId: string, answer: string) => {
     setAnswers(prev => ({
@@ -83,8 +89,31 @@ export default function QuoteForm() {
     setUserInfo(userInfo)
   }
 
+  const handleUserInfoContinue = () => {
+    setShowUserInfo(false)
+    setShowOtpVerification(true)
+  }
+
+  const handleOtpVerificationComplete = () => {
+    // Save all data to localStorage (in a real app, this would be sent to your backend)
+    if (selectedAddress && userInfo) {
+      const quoteData = {
+        answers,
+        address: selectedAddress,
+        userInfo
+      }
+      localStorage.setItem('quoteData', JSON.stringify(quoteData))
+      
+      // Redirect to product page
+      router.push('/product')
+    }
+  }
+
   const handleBack = () => {
-    if (showUserInfo) {
+    if (showOtpVerification) {
+      setShowOtpVerification(false)
+      setShowUserInfo(true)
+    } else if (showUserInfo) {
       setShowUserInfo(false)
       setShowAddressSearch(true)
     } else if (showAddressSearch) {
@@ -106,7 +135,7 @@ export default function QuoteForm() {
   }
 
   const currentQuestion = questions[currentStep]
-  const progress = showUserInfo ? 100 : showAddressSearch ? 85 : ((currentStep + 1) / questions.length) * 70
+  const progress = showOtpVerification ? 100 : showUserInfo ? 95 : showAddressSearch ? 85 : ((currentStep + 1) / questions.length) * 70
 
   return (
     <div className="min-h-screen flex flex-col max-w-7xl mx-auto">
@@ -188,7 +217,25 @@ export default function QuoteForm() {
       <main className="flex-1 flex flex-col justify-start sm:justify-center px-4 sm:px-6 py-6 sm:py-8">
         <div className="max-w-4xl mx-auto w-full space-y-6 sm:space-y-8">
           
-          {showUserInfo ? (
+          {showOtpVerification ? (
+            /* OTP Verification */
+            <AnimatePresence mode="wait">
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                transition={{ duration: 0.3, ease: "easeOut" }}
+                className="space-y-6 text-center"
+              >
+                <h1 className="text-2xl sm:text-3xl lg:text-4xl font-medium text-black leading-tight">
+                  Verify your phone number
+                </h1>
+                <p className="text-gray-600 text-base sm:text-lg lg:text-xl">
+                  We'll send a secure code to confirm it's really you
+                </p>
+              </motion.div>
+            </AnimatePresence>
+          ) : showUserInfo ? (
             /* User Info Form */
             <AnimatePresence mode="wait">
               <motion.div
@@ -253,7 +300,23 @@ export default function QuoteForm() {
             </AnimatePresence>
           )}
 
-          {showUserInfo ? (
+          {showOtpVerification ? (
+            /* OTP Verification Component */
+            <AnimatePresence mode="wait">
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                transition={{ duration: 0.3, ease: "easeOut" }}
+                className="max-w-md mx-auto"
+              >
+                <OtpVerification
+                  phoneNumber={userInfo?.fullPhoneNumber || userInfo?.phone || ''}
+                  onVerificationComplete={handleOtpVerificationComplete}
+                />
+              </motion.div>
+            </AnimatePresence>
+          ) : showUserInfo ? (
             /* User Info Form Component */
             <AnimatePresence mode="wait">
               <motion.div
@@ -265,6 +328,7 @@ export default function QuoteForm() {
               >
                 <UserInfoForm
                   onUserInfoChange={handleUserInfoChange}
+                  onContinue={handleUserInfoContinue}
                   initialUserInfo={userInfo}
                 />
               </motion.div>
@@ -407,7 +471,7 @@ export default function QuoteForm() {
       <footer className="border-t border-gray-100 px-4 sm:px-6 py-4">
         <div className="flex items-center justify-between">
           {/* Back Button */}
-          {(currentStep > 0 || showAddressSearch || showUserInfo) && (
+          {(currentStep > 0 || showAddressSearch || showUserInfo || showOtpVerification) && (
             <button
               onClick={handleBack}
               className="w-8 h-8 sm:w-10 sm:h-10 bg-gray-300 rounded-full flex items-center justify-center"
